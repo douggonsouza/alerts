@@ -2,14 +2,31 @@
 
 namespace alerts\alerts;
 
-abstract class alerts{
+abstract class alerts
+{
+    // BADGE
+    const BADGE_PRIMARY    = 'primary';
+    const BADGE_SECONDARY  = 'secondary';
+    const BADGE_SUCCESS    = 'success';
+    const BADGE_DANGER     = 'danger';
+    const BADGE_WARNING    = 'warning';
+    const BADGE_INFO       = 'info';
+    const BADGE_LIGHT      = 'light';
+    const BADGE_DARK       = 'dark';
 
-    static $modelo = __DIR__.'/alert.phtml';
+    // LABEL BADGE
+    const LABEL_BADGE = array(
+        self::BADGE_PRIMARY   => 'Primário',
+        self::BADGE_SECONDARY => 'Secundário',
+        self::BADGE_SUCCESS   => 'Sucesso',
+        self::BADGE_DANGER    => 'Erro',
+        self::BADGE_WARNING   => 'Atento',
+        self::BADGE_INFO      => 'Informação',
+        self::BADGE_LIGHT     => 'Inativo',
+        self::BADGE_DARK      => 'Ativo',
+    );
 
-    const SUCCESS = 'success';
-    const ERROR   = 'error';
-    const WARNING = 'warning';
-    const INFO    = 'info';
+    static public $clear = true;
 
     /**
      * Busca pela mensagem de alerta na sessão
@@ -20,64 +37,43 @@ abstract class alerts{
     static final function searchInSession()
     {
         if(!isset($_SESSION['msgAlert']) || empty($_SESSION['msgAlert'])){
-            return false;
+            $_SESSION['msgAlert'] = array();
         }
-        return $_SESSION['msgAlert']['msgs'];
+        return $_SESSION['msgAlert'];
     }
 
     /**
      * Salva na sessão a mensagem de alerta
-     * 
-     * @return array
+     *
+     * @param string $alert
+     * @param string $badge
+     * @return void
      */
-    public final function saveInSession(string $alert)
+    public final function saveInSession(string $alert, string $badge = self::BADGE_SUCCESS)
     {
         if(!isset($alert) || empty($alert)){
             return false;
         }
 
-        $_SESSION['msgAlert']['msgs'][] = $alert;
+        if(isset($_SESSION['msgAlert'][$badge]) && is_array($_SESSION['msgAlert'][$badge])){
+            $_SESSION['msgAlert'][$badge][] = $alert;
+            return true;
+        }
+
+        $_SESSION['msgAlert'][$badge] = array($alert);
         return true;
     }
 
     /**
-     * Devolve o conteúdo do alerta
-     * 
-     * @param string $mensagem
-     * @param string $type
-     * 
-     * @return string
+     * Regista um alerta
+     *
+     * @param string  $mensagem
+     * @param string  $badge
+     * @return void
      */
-    static final public function set($mensagem,$type = 'success')
-    {
-        // colhe o modelo
-        if(file_exists(self::getModelo()))
-            $modelo = file_get_contents(self::getModelo());
-
-        if(!isset($modelo))
-            return self;
-        
-        // testa o conteúdo da variável
-        if(isset($mensagem) && strlen($mensagem) > 0){
-            switch($type){
-                case self::SUCCESS:                        
-                    $alert = sprintf($modelo, 'success', 'Sucesso!: '.$mensagem);
-                    break;
-                case self::ERROR:  
-                    $alert = sprintf($modelo, 'danger', 'Perigo!: '.$mensagem);                      
-                    break;
-                case self::WARNING:
-                    $alert = sprintf($modelo, 'warning', 'Cuidado!: '.$mensagem);                       
-                    break;                    
-                case self::INFO:
-                    $alert = sprintf($modelo, 'info', 'Informação!: '.$mensagem);                        
-                    break;
-                default: 
-                    $alert = sprintf($modelo, 'success', 'Sucesso!: '.$mensagem);                                              
-            }
-        }
-
-        self::saveInSession($alert);
+    static final public function set(string $mensagem, string $badge = self::BADGE_SUCCESS)
+    {        
+        self::saveInSession(str_pad($mensagem,120), $badge);
 
         return self;
     }
@@ -87,75 +83,105 @@ abstract class alerts{
      *
      * @return void
      */
-    public function template(){
-        return '<div class="sufee-alert alert with-close alert-%1$s alert-dismissible fade show">
-            <span class="badge badge-pill badge-%1$s">%2$s</span>
-            %3$s
-            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
-        </div>';
+    public static function template(string $message, string $badge = self::BADGE_SUCCESS)
+    {
+        if(!isset($message) || empty($message)){
+            return null;
+        }
+
+        return sprintf('<div class="sufee-alert alert with-close alert-%1$s alert-dismissible fade show">
+                <span class="badge badge-pill badge-%1$s">%2$s</span></br>
+                %3$s
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>',
+            $badge,
+            self::LABEL_BADGE[$badge],
+            $message
+        );
     }
 
     /**
      * Retorna alerta definido
      * 
-     * @param string $clear
+     * @param bool $clear
      * 
      * @return mixed
      */
-    final public function get($clear = true)
+    static final public function get(bool $clear = true)
     {
         $alerts = self::searchInSession();
-                        
-        if(!isset($alerts) || empty($alerts))
-            self::setExists(false);
+        
+        self::clear($clear);
 
-        if($clear) $_SESSION['msgAlert']['msgs'] = [];
-        return implode("\n ",$alerts);
+        if(!isset($alerts) || empty($alerts)){
+            return null;
+        }
+
+        $messages = null;
+        foreach($alerts as $index => $items){
+            $msgs = implode(";</br>\n ",$items);
+            $messages .= self::template($msgs."\n", $index);
+        }
+
+        return $messages;
     }
 
     /**
      * Limpa a mensagem de alerta
-     */
-    final public function clear()
-    {
-        self::$alerta = [];
-        return self;
-    }
-
-    /**
-     * Get the value of modelo
-     */ 
-    public function getModelo()
-    {
-        return self::$modelo;
-    }
-
-    /**
-     * Set the value of modelo
      *
-     * @return  self
-     */ 
-    public function setModelo($modelo)
+     * @param  boolean $clear
+     * @return object
+     */
+    static final public function clear(bool $clear = true)
     {
-        self::$modelo = $modelo;
-
+        self::setClear($clear);
+        if(self::getClear()){
+            $_SESSION['msgAlert'] = array();
+        }
         return self;
     }
 
     /**
      * Get the value of exists
      */ 
-    final public function exist()
+    static final public function exist()
     {
         if(isset($_SESSION['msgAlert']) && !empty($_SESSION['msgAlert'])){
-            if(!empty($_SESSION['msgAlert']['msgs']))
-                return true;
-            return false;
+             return true;
         }
 
         return false;
+    }
+
+    /**
+     * Get the value of clear
+     */ 
+    static public function getClear()
+    {
+        return self::$clear;
+    }
+
+    /**
+     * Set the value of clear
+     *
+     * @return  self
+     */ 
+    static public function setClear($clear)
+    {
+        self::$clear = $clear;
+        return self;
+    }
+
+    /**
+     * Evento destrutor da classe
+     */
+    public function __destruct()
+    {
+        if(self::getClear()){
+            $_SESSION['msgAlert'] = array();
+        }
     }
 }
 
